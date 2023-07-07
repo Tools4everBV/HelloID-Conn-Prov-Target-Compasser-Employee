@@ -1,13 +1,50 @@
 #####################################################
 # HelloID-Conn-Prov-Target-Compasser-Employee-Create
 #
-# Version: 1.0.0
+# Version: 1.1.0
 #####################################################
 # Initialize default values
 $config = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
 $success = $false
 $auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+$middlenamePartner = $p.Name.familyNamePartnerPrefix
+$middlenameBirth = $p.Name.FamilyNamePrefix
+
+
+if ($p.Name.convention -eq "b") {
+    $middlename = $p.Name.FamilyNamePrefix
+}
+if ($p.Name.convention -eq "bp") {
+    $middlename = $p.Name.FamilyNamePrefix
+}
+if ($p.Name.convention -eq "p") {
+    $middlename = $p.Name.familyNamePartnerPrefix
+}
+if ($p.Name.convention -eq "pb") {
+    $middlename = $p.Name.familyNamePartnerPrefix
+}
+
+if ($p.Name.convention -eq "b") {
+    $lastname = $p.Name.FamilyName
+}
+if ($p.Name.convention -eq "bp") {
+    $lastname = $p.Name.FamilyName + " - " 
+    if ($middlenamePartner -eq "") { $lastname = $lastname + " " + $p.Name.familyNamePartner }
+    else { $lastname = $lastname + $middlenamePartner + " " + $p.Name.familyNamePartner }
+}
+
+if ($p.Name.convention -eq "p") {
+    $lastname = $p.Name.familyNamePartner
+       
+}
+if ($p.Name.convention -eq "pb") {
+    $lastname = $p.Name.familyNamePartner + " - " 
+    if ($middlenameBirth -eq "") { $lastname = $lastname + $p.Name.familyName }
+    else { $lastname = $lastname + $middlenameBirth + " " + $p.Name.FamilyName }
+}
+
 
 switch ($p.Details.gender) {
     { ($_ -eq "man") -or ($_ -eq "male") } {
@@ -24,21 +61,23 @@ switch ($p.Details.gender) {
 # mapping between location and project_id
 $mappingContractAttribute = { $_.CostCenter.Name }
 $projectHashTable = @{
-    "Administration"  = 1001
-    "Sales"           = 2001
-    "Development"     = 3001
+    "Administration" = 1001
+    "Sales"          = 2001
+    "Development"    = 3001
 }
 
 # Account mapping
 $account = [PSCustomObject]@{
-    type        = 'begeleider'
-    firstname   = $p.Name.GivenName
-    letters     = $p.Name.Initials
-    lastname    = $p.Name.FamilyName
-    gender      = $gender
-    email       = $p.Accounts.MicrosoftActiveDirectory.mail
-    remote_id   = $p.ExternalId
-    project_ids = "" #Project_id determined automatically later in script
+    type                = 'begeleider'
+    firstname           = $p.Name.GivenName
+    letters             = $p.Name.Initials
+    lastname            = $lastname
+    $linkname           = $middleName
+    gender              = $gender
+    email               = $p.Accounts.MicrosoftActiveDirectory.mail
+    remote_id           = $p.ExternalId
+    remindoconnect_code = $p.Accounts.MicrosoftActiveDirectory.userPrincipalName
+    project_ids         = "" #Project_id determined automatically later in script
 }
 
 #sets null value's to an empty string
@@ -95,7 +134,8 @@ function Resolve-CompasserError {
         }
         if ($ErrorObject.ErrorDetails) {
             $errorExceptionDetails = $ErrorObject.ErrorDetails
-        } elseif ($ErrorObject.Exception.Response) {
+        }
+        elseif ($ErrorObject.Exception.Response) {
             $reader = New-Object System.IO.StreamReader( $ErrorObject.Exception.Response.GetResponseStream())
             $errorExceptionDetails = $reader.ReadToEnd()
             $reader.Dispose()
@@ -106,10 +146,12 @@ function Resolve-CompasserError {
             try {
                 $convertedErrorDetails = $httpErrorObj.ErrorDetails | ConvertFrom-Json
                 $httpErrorObj.FriendlyMessage = $convertedErrorDetails.error_description
-            } catch {
+            }
+            catch {
                 $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
             }
-        } else {
+        }
+        else {
             $httpErrorObj.ErrorDetails = $ErrorObject.Exception.Message
             $httpErrorObj.FriendlyMessage = $ErrorObject.Exception.Message
         }
@@ -225,21 +267,21 @@ try {
                 Message = "$action account for Project(s) [$($account.project_ids -join ', ')] was successful. AccountReference is: [$accountReference]"
                 IsError = $false
             })
-        }
     }
-    catch {
-        $success = $false
-        $ex = $PSItem
-        if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-            $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-            $errorObj = Resolve-CompasserError -ErrorObject $ex
-            $auditMessage = "Could not $action Compasser-Employee account. Error: $($errorObj.FriendlyMessage)"
-            Write-Verbose "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-        }
-        else {
-            $auditMessage = "Could not $action Compasser-Employee account. Error: $($errorObj.FriendlyMessage)"
-            Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-        }
+}
+catch {
+    $success = $false
+    $ex = $PSItem
+    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-CompasserError -ErrorObject $ex
+        $auditMessage = "Could not $action Compasser-Employee account. Error: $($errorObj.FriendlyMessage)"
+        Write-Verbose "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+    }
+    else {
+        $auditMessage = "Could not $action Compasser-Employee account. Error: $($errorObj.FriendlyMessage)"
+        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
     Write-Verbose $auditMessage
     $auditLogs.Add([PSCustomObject]@{
             Message = $auditMessage
