@@ -1,7 +1,7 @@
 #####################################################
 # HelloID-Conn-Prov-Target-Compasser-Employee-Update
 #
-# Version: 1.0.0
+# Version: 1.1.0
 #####################################################
 # Initialize default values
 $config = $configuration | ConvertFrom-Json
@@ -9,6 +9,42 @@ $p = $person | ConvertFrom-Json
 $aRef = $AccountReference | ConvertFrom-Json
 $success = $false
 $auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+$middlenamePartner = $p.Name.familyNamePartnerPrefix
+$middlenameBirth = $p.Name.FamilyNamePrefix
+
+if ($p.Name.convention -eq "b") {
+    $middlename = $p.Name.FamilyNamePrefix
+}
+if ($p.Name.convention -eq "bp") {
+    $middlename = $p.Name.FamilyNamePrefix
+}
+if ($p.Name.convention -eq "p") {
+    $middlename = $p.Name.familyNamePartnerPrefix
+}
+if ($p.Name.convention -eq "pb") {
+    $middlename = $p.Name.familyNamePartnerPrefix
+}
+
+if ($p.Name.convention -eq "b") {
+    $lastname = $p.Name.FamilyName
+}
+if ($p.Name.convention -eq "bp") {
+    $lastname = $p.Name.FamilyName + " - " 
+    if ($middlenamePartner -eq "") { $lastname = $lastname + " " + $p.Name.familyNamePartner }
+    else { $lastname = $lastname + $middlenamePartner + " " + $p.Name.familyNamePartner }
+}
+
+if ($p.Name.convention -eq "p") {
+    $lastname = $p.Name.familyNamePartner
+       
+}
+if ($p.Name.convention -eq "pb") {
+    $lastname = $p.Name.familyNamePartner + " - " 
+    if ($middlenameBirth -eq "") { $lastname = $lastname + $p.Name.familyName }
+    else { $lastname = $lastname + $middlenameBirth + " " + $p.Name.FamilyName }
+}
+
 
 $gender = switch ($p.Details.gender) {
     { ($_ -eq "man") -or ($_ -eq "male") } { 
@@ -25,21 +61,23 @@ $gender = switch ($p.Details.gender) {
 $mappingContractAttribute = { $_.CostCenter.Name }
 # mapping between location and project_id
 $projectHashTable = @{
-    "Administration"  = 1001
-    "Sales"           = 2001
-    "Development"     = 3001
+    "Administration" = 1001
+    "Sales"          = 2001
+    "Development"    = 3001
 }
 
 # Account mapping
 $account = [PSCustomObject]@{
-    type        = 'begeleider'
-    firstname   = $p.Name.GivenName
-    letters     = $p.Name.Initials
-    lastname    = $p.Name.FamilyName
-    gender      = $gender
-    email       = $p.Accounts.MicrosoftActiveDirectory.mail
-    remote_id   = $p.ExternalId
-    project_ids = "" #Project_id determined automatically later in script
+    type                = 'begeleider'
+    firstname           = $p.Name.GivenName
+    letters             = $p.Name.Initials
+    lastname            = $lastname
+    linkname            = $middleName
+    gender              = $gender
+    email               = $p.Accounts.MicrosoftActiveDirectory.mail
+    remote_id           = $p.ExternalId
+    remindoconnect_code = $p.Accounts.MicrosoftActiveDirectory.userPrincipalName
+    project_ids         = "" #Project_id determined automatically later in script
 }
 
 #sets null value's to an empty string. This is used for the comparison later in the script
